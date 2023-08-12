@@ -5,9 +5,12 @@ const expectEqual = std.testing.expectEqual;
 const assert = std.debug.assert;
 const Sha256oSha256 = std.crypto.hash.composition.Sha256oSha256;
 
+const MAX_BLOCKFILE_SIZE: usize = 134_217_728;
 const MAX_BLOCK_SIZE: usize = 1_048_576;
 const MAX_CMD_LINE_SIZE: usize = 512;
 const MAX_PATH_SIZE: usize = 256;
+
+const TABSIZE: usize = 2;
 
 const VarInt = u64;
 
@@ -56,6 +59,19 @@ const Tx_In = struct {
             .sequence = [_]u8{0} ** 4,
         };
     }
+    pub fn format(
+        self: Tx_In,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}TXID: \t\t{s}\n", .{ " " ** (TABSIZE * 2), std.fmt.fmtSliceHexLower(&self.txid) });
+        try writer.print("{s}Script length: {d}\n", .{ " " ** (TABSIZE * 2), self.script_length });
+        try writer.print("{s}ScriptSig:\t{s}\n", .{ " " ** (TABSIZE * 2), std.fmt.fmtSliceHexLower(self.script_sig) });
+        try writer.print("{s}Sequence:\t{s}\n", .{ " " ** (TABSIZE * 2), std.fmt.fmtSliceHexLower(&self.sequence) });
+    }
 };
 
 // Transaction Outputs
@@ -70,6 +86,18 @@ const Tx_Out = struct {
             .script_pub_key = undefined,
         };
     }
+    pub fn format(
+        self: Tx_Out,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}Value (satoshis): {d}\n", .{ " " ** (TABSIZE * 2), self.value });
+        try writer.print("{s}Script length: {d}\n", .{ " " ** (TABSIZE * 2), self.script_length });
+        try writer.print("{s}ScriptPubKey: {s}\n", .{ " " ** (TABSIZE * 2), std.fmt.fmtSliceHexLower(self.script_pub_key) });
+    }
 };
 
 const WitnessComp = struct {
@@ -81,6 +109,17 @@ const WitnessComp = struct {
             .comp = undefined,
         };
     }
+    pub fn format(
+        self: WitnessComp,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}WitnessComp length[{d}]:\n", .{ " " ** (TABSIZE * 3), self.length });
+        try writer.print("{s}WitnesComp: {s}\n", .{ " " ** (TABSIZE * 3), std.fmt.fmtSliceHexLower(self.comp) });
+    }
 };
 
 const Witness = struct {
@@ -91,6 +130,23 @@ const Witness = struct {
             .count = 0,
             .witnesses = undefined,
         };
+    }
+    pub fn format(
+        self: Witness,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}Witness:\n", .{" " ** (TABSIZE * 1)});
+        try writer.print("{s}#Witnesses: {d}\n", .{ " " ** (TABSIZE * 2), self.count });
+        var i: usize = 0;
+        for (self.witnesses) |w| {
+            try writer.print("{s}WitnessComp[{d}]:\n", .{ " " ** (TABSIZE * 2), i });
+            try writer.print("{s}", .{w});
+            i += 1;
+        }
     }
 };
 
@@ -117,6 +173,38 @@ const Tx = struct {
             .locktime = [_]u8{0} ** 4,
         };
     }
+    pub fn format(
+        self: Tx,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}Version: \t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.version) });
+        if (self.has_witness) {
+            try writer.print("{s}Witness flags: \t\t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.witness_flags) });
+        }
+        try writer.print("{s}#Tx_In: {d}\n", .{ " " ** (TABSIZE * 1), self.tx_in_count });
+        var tx_in_i: usize = 0;
+        for (self.tx_in) |tx_in| {
+            try writer.print("{s}Tx_In[{d}]:\n", .{ " " ** (TABSIZE * 1), tx_in_i });
+            try writer.print("{s}", .{tx_in});
+            tx_in_i += 1;
+        }
+        try writer.print("{s}#Tx_Out: {d}\n", .{ " " ** (TABSIZE * 1), self.tx_out_count });
+        var tx_out_i: usize = 0;
+        for (self.tx_out) |tx_out| {
+            try writer.print("{s}Tx_Out[{d}]:\n", .{ " " ** (TABSIZE * 1), tx_out_i });
+            try writer.print("{s}", .{tx_out});
+            tx_out_i += 1;
+        }
+        if (self.has_witness) {
+            try writer.print("{s}Witness:\n", .{" " ** (TABSIZE * 1)});
+            try writer.print("{s}", .{self.witness});
+        }
+        try writer.print("{s}Locktime:\t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.locktime) });
+    }
 };
 
 const BlockHeader = struct {
@@ -136,6 +224,21 @@ const BlockHeader = struct {
             .nonce = [4]u8{ 0, 0, 0, 0 },
         };
     }
+    pub fn format(
+        self: BlockHeader,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}Version: \t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.version) });
+        try writer.print("{s}Hash of previous block: {s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.prev_block) });
+        try writer.print("{s}Merkle root:\t\t  {s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.merkle_root) });
+        try writer.print("{s}Timestamp: \t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.timestamp) });
+        try writer.print("{s}Difficulty: \t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.difficulty) });
+        try writer.print("{s}Nonce: \t{s}\n", .{ " " ** (TABSIZE * 1), std.fmt.fmtSliceHexLower(&self.nonce) });
+    }
 };
 
 const Block = struct {
@@ -154,6 +257,27 @@ const Block = struct {
             .tx_count = 0,
             .txs = undefined,
         };
+    }
+    pub fn format(
+        self: Block,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("{s}Block hash: {s}\n", .{ " " ** (TABSIZE * 0), std.fmt.fmtSliceHexLower(&self.hash_current_header) });
+        try writer.print("{s}Magic bytes(network): {s}\n", .{ " " ** (TABSIZE * 0), std.fmt.fmtSliceHexLower(&self.magic_bytes) });
+        try writer.print("{s}Block size: {d}\n", .{ " " ** (TABSIZE * 0), self.size });
+        try writer.print("{s}Block header:\n", .{" " ** (TABSIZE * 0)});
+        try writer.print("{s}", .{self.block_header});
+        try writer.print("{s}Number of Transactions: {d}\n", .{ " " ** (TABSIZE * 0), self.tx_count });
+        var tx_i: usize = 0;
+        for (self.txs) |tx| {
+            try writer.print("{s}Tx[{d}]:\n", .{ " " ** (TABSIZE * 0), tx_i });
+            try writer.print("{tx}", .{tx});
+            tx_i += 1;
+        }
     }
 };
 
@@ -273,10 +397,6 @@ fn parceTx(raw_block: []u8, index: *usize, num_txs: usize, allocator: anytype) !
         for (tx.tx_out) |*tx_out| {
             tx_out.* = Tx_Out.init();
             tx_out.value = getValue(raw_block, &i);
-            // var value: [4]u8 = [_]u8{0} ** 4;
-            // mem.copy(u8, &value, raw_block[i .. i + 4]);
-            // tx_out.value = @bitCast(u32, value);
-            // i += 4;
             tx_out.script_length = getVarInt(raw_block, &i);
             tx_out.script_pub_key = try allocator.alloc(u8, tx_out.script_length);
             mem.copy(u8, tx_out.script_pub_key, raw_block[i .. i + tx_out.script_length]);
@@ -354,64 +474,6 @@ fn readBlock(magic_bytes: *[4]u8, block_size: *u64, ptr_block: *[]u8, reader: an
     return bytes_read;
 }
 
-fn write(block: *Block, writer: anytype) !void {
-    comptime var tsiz: usize = 2;
-    try writer.print("{s}Block hash: {s}\n", .{ " " ** (tsiz * 0), std.fmt.fmtSliceHexLower(&block.hash_current_header) });
-    try writer.print("{s}Magic bytes(network): {s}\n", .{ " " ** (tsiz * 0), std.fmt.fmtSliceHexLower(&block.magic_bytes) });
-    try writer.print("{s}Block size: {d}\n", .{ " " ** (tsiz * 0), block.size });
-    try writer.print("{s}Block header:\n", .{" " ** (tsiz * 0)});
-    try writer.print("{s}Version: \t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.version) });
-    try writer.print("{s}Hash of previous block: {s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.prev_block) });
-    try writer.print("{s}Merkle root:\t\t  {s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.merkle_root) });
-    try writer.print("{s}Timestamp: \t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.timestamp) });
-    try writer.print("{s}Difficulty: \t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.difficulty) });
-    try writer.print("{s}Nonce: \t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&block.block_header.nonce) });
-    try writer.print("{s}Transactions:\n", .{" " ** (tsiz * 1)});
-    try writer.print("{s}Number of Transactions: {d}\n", .{ " " ** (tsiz * 0), block.tx_count });
-
-    var tx_i: usize = 1;
-    for (block.txs) |tx| {
-        try writer.print("{s}Tx[{d}]:\n", .{ " " ** (tsiz * 0), tx_i });
-        try writer.print("{s}Version: \t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&tx.version) });
-        if (tx.has_witness) {
-            try writer.print("{s}Witness flags: \t\t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&tx.witness_flags) });
-        }
-        try writer.print("{s}#Tx_In: {d}\n", .{ " " ** (tsiz * 1), tx.tx_in_count });
-        var tx_in_i: usize = 1;
-        for (tx.tx_in) |tx_in| {
-            try writer.print("{s}Tx_In[{d}]:\n", .{ " " ** (tsiz * 1), tx_in_i });
-            try writer.print("{s}TXID: \t\t{s}\n", .{ " " ** (tsiz * 2), std.fmt.fmtSliceHexLower(&tx_in.txid) });
-            try writer.print("{s}Script length: {d}\n", .{ " " ** (tsiz * 2), tx_in.script_length });
-            try writer.print("{s}ScriptSig:\t{s}\n", .{ " " ** (tsiz * 2), std.fmt.fmtSliceHexLower(tx_in.script_sig) });
-            try writer.print("{s}Sequence:\t{s}\n", .{ " " ** (tsiz * 2), std.fmt.fmtSliceHexLower(&tx_in.sequence) });
-            tx_in_i += 1;
-        }
-        try writer.print("{s}#Tx_Out: {d}\n", .{ " " ** (tsiz * 1), tx.tx_out_count });
-        var tx_out_i: usize = 1;
-        for (tx.tx_out) |tx_out| {
-            try writer.print("{s}Tx_Out[{d}]:\n", .{ " " ** (tsiz * 1), tx_out_i });
-            try writer.print("{s}Value (satoshis): {d}\n", .{ " " ** (tsiz * 2), tx_out.value });
-            try writer.print("{s}Script length: {d}\n", .{ " " ** (tsiz * 2), tx_out.script_length });
-            try writer.print("{s}ScriptPubKey: {s}\n", .{ " " ** (tsiz * 2), std.fmt.fmtSliceHexLower(tx_out.script_pub_key) });
-            tx_out_i += 1;
-        }
-        if (tx.has_witness) {
-            try writer.print("{s}Witness:\n", .{" " ** (tsiz * 1)});
-            try writer.print("{s}#Witnesses: {d}\n", .{ " " ** (tsiz * 2), tx.witness.count });
-            var witness_i: usize = 1;
-            for (tx.witness.witnesses) |witnessComp| {
-                try writer.print("{s}WitnessComp[{d}]:\n", .{ " " ** (tsiz * 2), witness_i });
-                try writer.print("{s}WitnessComp length[{d}]:\n", .{ " " ** (tsiz * 3), witnessComp.length });
-                try writer.print("{s}WitnesComp: {s}\n", .{ " " ** (tsiz * 3), std.fmt.fmtSliceHexLower(witnessComp.comp) });
-                witness_i += 1;
-            }
-        }
-        try writer.print("{s}Locktime:\t{s}\n", .{ " " ** (tsiz * 1), std.fmt.fmtSliceHexLower(&tx.locktime) });
-        tx_i += 1;
-    }
-    try writer.print("\n", .{});
-}
-
 fn read(in: anytype, out: anytype) !void {
     // Block Memory Allocation: Read & Data struct:
     // Raw block size does not exceed MAX_BLOCK_SIZE.
@@ -429,10 +491,9 @@ fn read(in: anytype, out: anytype) !void {
 
     // Set up buffered reader
     var buf_reader = std.io.bufferedReader(in.reader());
-    var in_stream = buf_reader.reader();
+    var reader = buf_reader.reader();
 
     // Set up buffered writer
-    // const out = std.io.getStdOut();
     var buf_writer = std.io.bufferedWriter(out.writer());
     var writer = buf_writer.writer();
 
@@ -441,9 +502,10 @@ fn read(in: anytype, out: anytype) !void {
     var block_size: u64 = 0;
     var raw_block: []u8 = undefined;
 
-    while (try readBlock(&magic_bytes, &block_size, &raw_block, in_stream, allocator) > 0) {
-        var block = try parceBlock(magic_bytes, block_size, raw_block, allocator);
-        try write(block, writer);
+    while (try readBlock(&magic_bytes, &block_size, &raw_block, reader, allocator) > 0) {
+        const block = try parceBlock(magic_bytes, block_size, raw_block, allocator);
+        // try write(block, writer);
+        try writer.print("{s}\n", .{block.*});
         try buf_writer.flush();
 
         fba.reset(); // re-use memory
@@ -459,7 +521,7 @@ fn makeOtputFilename(filename: []const u8, allocator: anytype) ![]u8 {
     return out_filename;
 }
 
-fn argsInFilenameOutDir(in_filename: [] const u8, out_dir: std.fs.Dir, allocator: anytype) !void {
+fn argsInFilenameOutDir(in_filename: []const u8, out_dir: std.fs.Dir, allocator: anytype) !void {
     // Input
     if (!mem.eql(u8, std.fs.path.extension(in_filename), ".dat")) {
         std.debug.print("\"{s}\" is not a .dat file\n", .{in_filename});
@@ -482,7 +544,7 @@ fn argsInFilenameOutDir(in_filename: [] const u8, out_dir: std.fs.Dir, allocator
     try read(in_file, out_file);
 }
 
-fn argsInDirnameOutDir(in_dirname: [] const u8, out_dir: std.fs.Dir, allocator: anytype, fba: *std.heap.FixedBufferAllocator) !void {
+fn argsInDirnameOutDir(in_dirname: []const u8, out_dir: std.fs.Dir, allocator: anytype, fba: *std.heap.FixedBufferAllocator) !void {
     var in_dir = std.fs.cwd().openDir(in_dirname, .{}) catch |err| {
         std.debug.print("{}\n", .{err});
         return;
@@ -563,7 +625,7 @@ pub fn main() !void {
             return;
         }
     } else {
-        // stat 2nd argument 
+        // stat 2nd argument
         const snd_arg_stat = try std.fs.cwd().statFile(args[2]);
         if (snd_arg_stat.kind != .Directory) {
             std.debug.print("\"{s}\" is not a directory\n", .{args[2]});
@@ -576,7 +638,7 @@ pub fn main() !void {
         };
         defer out_dir.close();
 
-        // stat 1st argument 
+        // stat 1st argument
         const fst_arg_stat = try std.fs.cwd().statFile(args[1]);
         if (fst_arg_stat.kind == .File) {
             try argsInFilenameOutDir(args[1], out_dir, path_allocator);
