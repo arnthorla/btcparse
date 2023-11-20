@@ -34,20 +34,29 @@ const VarInt = u64;
 // Messages:
 const msg_usage =
     \\
-    \\Usage: btcparse <file|directory> [output-directory]
+    \\Usage: btcparse [-j|-J] <file|directory> [output-directory]
     \\       btcparse < <file>
     \\       <input-stream> | btcparse
     \\
     \\Notes: - Outputs to current working directory (CWD) by default.
-    \\       - output-directory must exist.
+    \\       - If output-directory is given then it must exist.
+    \\       - Output is in text format by default.
+    \\       - Flag -j for output as minified JSON.
+    \\       - Flag -J for output as human readable JSON.
     \\
     \\Examples:
     \\      btcparse blocks/blk00000.dat
     \\          Outputs blk00000.out file in CWD.
     \\
+    \\      btcparse -J blocks/blk00000.dat
+    \\          Outputs blk00000.json file (human-readable) in CWD.
+    \\
+    \\      btcparse -j blocks/blk00000.dat
+    \\          Outputs blk00000.json file (minified) in CWD.
+    \\
     \\      btcparse blocks 
     \\          Parses all .dat files in "blocks" directory.
-    \\          Outputs corrisponding .out files in CWD.  
+    \\          Outputs corresponding .out files in CWD.  
     \\
     \\      btcparse blocks/blk00000.dat outdir
     \\          Same as above except outputs are stored in outdir.
@@ -530,7 +539,8 @@ fn getVarInt(buf: []u8, index: *usize) VarInt {
             index.* = i + 9;
         },
     }
-    return @bitCast(u64, res);
+
+    return @bitCast(res);
 }
 
 fn getValue(buf: []u8, index: *usize) u64 {
@@ -540,7 +550,7 @@ fn getValue(buf: []u8, index: *usize) u64 {
     i += 8;
     index.* = i;
 
-    return @bitCast(u64, res);
+    return @bitCast(res);
 }
 
 fn copyReverse(dest: []u8, source: []const u8) void {
@@ -680,7 +690,7 @@ fn readBlock(magic_bytes: *[4]u8, block_size: *u64, ptr_block: *[]u8, reader: an
     bytes_read += 4;
     var raw_size = try reader.readBoundedBytes(4);
     bytes_read += 4;
-    const size: u32 = @bitCast(u32, raw_size.buffer);
+    const size: u32 = @bitCast(raw_size.buffer);
     const b = try allocator.alloc(u8, size);
     bytes_read += try reader.readAll(b);
     magic_bytes.* = mb.buffer;
@@ -803,7 +813,7 @@ fn argsInDirnameOutDir(in_dirname: []const u8, out_dir: std.fs.Dir, allocator: a
     };
     var iter = in_itdir.iterate();
     while (try iter.next()) |entry| {
-        if (entry.kind == .File and mem.eql(u8, std.fs.path.extension(entry.name), ".dat")) {
+        if (entry.kind == .file and mem.eql(u8, std.fs.path.extension(entry.name), ".dat")) {
             // Input
             const in_file = in_dir.openFile(entry.name, .{}) catch |err| {
                 std.debug.print("{}\n", .{err});
@@ -832,9 +842,9 @@ fn singleArg(arg: []const u8, allocator: anytype, fba: *std.heap.FixedBufferAllo
     };
     defer out_dir.close();
     const arg_stat = try std.fs.cwd().statFile(arg);
-    if (arg_stat.kind == .File) {
+    if (arg_stat.kind == .file) {
         try argsInFilenameOutDir(arg, out_dir, allocator, format);
-    } else if (arg_stat.kind == .Directory) {
+    } else if (arg_stat.kind == .directory) {
         try argsInDirnameOutDir(arg, out_dir, allocator, fba, format);
     } else {
         std.debug.print("\"{s}\" is neither a file nor a directory\n", .{arg});
@@ -845,7 +855,7 @@ fn singleArg(arg: []const u8, allocator: anytype, fba: *std.heap.FixedBufferAllo
 
 fn twoArgs(arg1: []const u8, arg2: []const u8, allocator: anytype, fba: *std.heap.FixedBufferAllocator, format: Format) !void {
     const snd_arg_stat = try std.fs.cwd().statFile(arg2);
-    if (snd_arg_stat.kind != .Directory) {
+    if (snd_arg_stat.kind != .directory) {
         std.debug.print("\"{s}\" is not a directory\n", .{arg2});
         std.debug.print("{s}\n", .{msg_usage});
         return;
@@ -857,9 +867,9 @@ fn twoArgs(arg1: []const u8, arg2: []const u8, allocator: anytype, fba: *std.hea
     defer out_dir.close();
 
     const fst_arg_stat = try std.fs.cwd().statFile(arg1);
-    if (fst_arg_stat.kind == .File) {
+    if (fst_arg_stat.kind == .file) {
         try argsInFilenameOutDir(arg1, out_dir, allocator, format);
-    } else if (fst_arg_stat.kind == .Directory) {
+    } else if (fst_arg_stat.kind == .directory) {
         try argsInDirnameOutDir(arg1, out_dir, allocator, fba, format);
     } else {
         std.debug.print("\"{s}\" is neither a file nor a directory\n", .{arg1});
@@ -887,7 +897,7 @@ pub fn main() !void {
         defer in.close();
         const in_stat = try in.stat();
         // Piped '|' or redirected '<' input from command line:
-        if (in_stat.kind == .NamedPipe or in_stat.kind == .File) {
+        if (in_stat.kind == .named_pipe or in_stat.kind == .file) {
             const out = std.io.getStdOut();
             try read(in, out, Format.text);
         } else {
@@ -900,7 +910,7 @@ pub fn main() !void {
                 defer in.close();
                 const in_stat = try in.stat();
                 // Json + Piped '|' or redirected '<' input from command line:
-                if (in_stat.kind == .NamedPipe or in_stat.kind == .File) {
+                if (in_stat.kind == .named_pipe or in_stat.kind == .file) {
                     const out = std.io.getStdOut();
                     switch (args[1][1]) {
                         'j' => try read(in, out, Format.json_minify),
