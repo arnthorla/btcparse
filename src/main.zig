@@ -577,7 +577,7 @@ fn reverse(bytes: []u8, size: usize) void {
     }
 }
 
-fn parceWitness(raw_block: []u8, index: *usize, witness: *Witness, allocator: anytype) !void {
+fn parseWitness(raw_block: []u8, index: *usize, witness: *Witness, allocator: anytype) !void {
     var i: usize = index.*;
     witness.* = Witness.init();
     witness.count = getVarInt(raw_block, &i);
@@ -591,7 +591,7 @@ fn parceWitness(raw_block: []u8, index: *usize, witness: *Witness, allocator: an
     index.* = i;
 }
 
-fn parceTx(raw_block: []u8, index: *usize, num_txs: usize, allocator: anytype) ![]Tx {
+fn parseTx(raw_block: []u8, index: *usize, num_txs: usize, allocator: anytype) ![]Tx {
     var i: usize = index.*;
     var txs: []Tx = try allocator.alloc(Tx, num_txs);
     for (txs) |*tx| {
@@ -629,7 +629,7 @@ fn parceTx(raw_block: []u8, index: *usize, num_txs: usize, allocator: anytype) !
             i += tx_out.script_length;
         }
         if (tx.has_witness) {
-            try parceWitness(raw_block, &i, &tx.witness, allocator);
+            try parseWitness(raw_block, &i, &tx.witness, allocator);
         }
         copyReverse(&tx.locktime, raw_block[i .. i + 4]);
         i += 4;
@@ -647,7 +647,7 @@ fn hash256_BlockHeader(raw_block: []u8, index: usize) [32]u8 {
     return res;
 }
 
-fn parceBlockHeader(raw_block: []u8, index: *usize) BlockHeader {
+fn parseBlockHeader(raw_block: []u8, index: *usize) BlockHeader {
     var i: usize = index.*;
     var header: BlockHeader = BlockHeader.init();
     copyReverse(&header.version, raw_block[i .. i + 4]);
@@ -667,16 +667,16 @@ fn parceBlockHeader(raw_block: []u8, index: *usize) BlockHeader {
     return header;
 }
 
-fn parceBlock(magic_bytes: [4]u8, block_size: u64, raw_block: []u8, allocator: anytype) !*Block {
+fn parseBlock(magic_bytes: [4]u8, block_size: u64, raw_block: []u8, allocator: anytype) !*Block {
     var index: usize = 0;
     var block: []Block = try allocator.alloc(Block, 1);
     block[0] = Block.init();
     copyReverse(&block[0].magic_bytes, magic_bytes[0..4]);
     block[0].size = block_size;
     block[0].hash_current_header = hash256_BlockHeader(raw_block, index);
-    block[0].block_header = parceBlockHeader(raw_block, &index);
+    block[0].block_header = parseBlockHeader(raw_block, &index);
     block[0].tx_count = getVarInt(raw_block, &index);
-    block[0].txs = try parceTx(raw_block, &index, block[0].tx_count, allocator);
+    block[0].txs = try parseTx(raw_block, &index, block[0].tx_count, allocator);
 
     return &block[0];
 }
@@ -730,16 +730,28 @@ fn read(in: anytype, out: anytype, format: Format) !void {
 
     var first: bool = true;
     while (try readBlock(&magic_bytes, &block_size, &raw_block, reader, allocator) > 0) {
-        const block = try parceBlock(magic_bytes, block_size, raw_block, allocator);
+        const block = try parseBlock(magic_bytes, block_size, raw_block, allocator);
 
         if (format.isJson()) {
-            switch (format) { 
-                .json_minify => {if (first) {try writer.print("[", .{});} else {try writer.print(",", .{});}},
-                .json_readable => {if (first) {try writer.print("[\n", .{});} else {try writer.print(",\n", .{});}},
+            switch (format) {
+                .json_minify => {
+                    if (first) {
+                        try writer.print("[", .{});
+                    } else {
+                        try writer.print(",", .{});
+                    }
+                },
+                .json_readable => {
+                    if (first) {
+                        try writer.print("[\n", .{});
+                    } else {
+                        try writer.print(",\n", .{});
+                    }
+                },
                 .text => unreachable,
             }
             first = false;
-            switch (format) { 
+            switch (format) {
                 .json_minify => try writer.print("{j}", .{block.*}),
                 .json_readable => try writer.print("{J}", .{block.*}),
                 .text => unreachable,
@@ -752,7 +764,7 @@ fn read(in: anytype, out: anytype, format: Format) !void {
         fba.reset(); // re-use memory
     }
     if (format.isJson()) {
-        switch (format) { 
+        switch (format) {
             .json_minify => try writer.print("]", .{}),
             .json_readable => try writer.print("\n]", .{}),
             .text => unreachable,
